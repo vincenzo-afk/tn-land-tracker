@@ -1,0 +1,17 @@
+# Backend
+backend/.env
+backend/__pycache__/
+backend/*.pyc
+backend/venv/
+backend/.pytest_cache/
+
+# General
+.DS_Store
+*.log
+
+# Frontend (Next.js defaults are usually in frontend/.gitignore, but I'll add them here for safety or merge)
+node_modules/
+.next/
+out/
+build/
+.env*.local
