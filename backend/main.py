@@ -41,6 +41,7 @@ app = FastAPI(
 # ── CORS ──────────────────────────────────────────────────────
 allowed_origins = [
     FRONTEND_URL,
+    "https://tn-land-tracker.vercel.app",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
