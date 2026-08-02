@@ -7,6 +7,7 @@ import { MapPin, FileText, Map, Info } from "lucide-react";
 const inter = Inter({ subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
   title: "TN Land Tracker — Tamil Nadu Land Parcel Search",
   description:
     "Search and view land ownership details, patta records, EC history, FMB sketches and guideline values across Tamil Nadu. Free, no login required.",
