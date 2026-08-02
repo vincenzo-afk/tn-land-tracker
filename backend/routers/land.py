@@ -40,12 +40,13 @@ async def db() -> Optional[asyncpg.Pool]:
 # ─────────────────────────────────────────────────────────────
 @router.get("/search", response_model=SearchResponse)
 async def search_land(
-    district:      Optional[str] = Query(None),
-    taluk:         Optional[str] = Query(None),
-    village:       Optional[str] = Query(None),
-    survey_number: Optional[str] = Query(None),
-    patta_number:  Optional[str] = Query(None),
-    owner_name:    Optional[str] = Query(None),
+    district:           Optional[str] = Query(None),
+    taluk:              Optional[str] = Query(None),
+    village:            Optional[str] = Query(None),
+    survey_number:      Optional[str] = Query(None),
+    subdivision_number: Optional[str] = Query(None),
+    patta_number:       Optional[str] = Query(None),
+    owner_name:         Optional[str] = Query(None),
     pool: Optional[asyncpg.Pool] = Depends(db),
 ):
     """
@@ -70,6 +71,9 @@ async def search_land(
         if survey_number:
             conditions.append(f"lp.survey_number ILIKE ${p}")
             params.append(f"%{survey_number}%"); p += 1
+        if subdivision_number:
+            conditions.append(f"lp.subdivision_number ILIKE ${p}")
+            params.append(f"%{subdivision_number}%"); p += 1
         if patta_number:
             conditions.append(f"lp.patta_number ILIKE ${p}")
             params.append(f"%{patta_number}%"); p += 1
@@ -110,6 +114,7 @@ async def search_land(
             taluk=taluk or "",
             village=village or "",
             survey_number=survey_number or "1",
+            subdivision_number=subdivision_number,
             patta_number=patta_number,
             pool=pool,
         )

@@ -1,6 +1,7 @@
 """
 services/tnreginet.py — Async scraper for TNREGINET portal.
 Fetches EC (Encumbrance Certificate) records and guideline value.
+Includes OTP detection, district code mapping, and detailed log classification.
 """
 from __future__ import annotations
 import asyncio
@@ -15,6 +16,8 @@ from uuid import UUID
 import httpx
 import asyncpg
 from bs4 import BeautifulSoup
+
+from lib.tn_codes import get_district_code
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +60,8 @@ async def fetch_ec_data(
     Saves results to ownership_history table if pool available.
     """
     records: list[dict] = []
+    district_code = get_district_code(district)
+
     async with httpx.AsyncClient(
         base_url=BASE_URL,
         headers=HEADERS,
@@ -77,7 +82,8 @@ async def fetch_ec_data(
                     form_data = {
                         **hidden,
                         "district": district,
-                        "district_code": district,
+                        "district_code": district_code,
+                        "ddl_district": district_code,
                         "surveyNo": survey_number,
                         "surveyno": survey_number,
                     }
@@ -89,7 +95,14 @@ async def fetch_ec_data(
                     logger.info("POST %s returned status %d", post_resp.url, post_resp.status_code)
 
                     if post_resp.status_code == 200:
-                        records = _parse_ec_table(BeautifulSoup(post_resp.text, "html.parser"))
+                        post_soup = BeautifulSoup(post_resp.text, "html.parser")
+                        text_lower = post_soup.get_text(strip=True).lower()
+
+                        if any(k in text_lower for k in ("otp", "ஒருமுறை", "login", "கடவுச்சொல்")):
+                            logger.warning("OTP/Login required on TNREGINET EC page %s. Skipping.", path)
+                            return records
+
+                        records = _parse_ec_table(post_soup)
                         if records:
                             if pool:
                                 for rec in records:
@@ -132,6 +145,8 @@ async def fetch_guideline_value(
     Fetch government guideline value from TNREGINET.
     Saves updated value back to land_parcels if pool available.
     """
+    district_code = get_district_code(district)
+
     async with httpx.AsyncClient(
         base_url=BASE_URL,
         headers=HEADERS,
@@ -143,7 +158,7 @@ async def fetch_guideline_value(
                 logger.info("Attempting Guideline Value fetch from %s", path)
                 resp = await client.get(
                     path,
-                    params={"district": district, "village": village},
+                    params={"district": district_code, "village": village},
                 )
                 logger.info("GET %s returned status %d", resp.url, resp.status_code)
                 if resp.status_code == 200:

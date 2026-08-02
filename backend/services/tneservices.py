@@ -1,7 +1,7 @@
 """
 services/tneservices.py — Async scraper for TN eServices portal.
 Fetches Patta, Chitta, A-Register data and FMB sketch.
-Support for eservicesnew & legacy portal endpoints with retry handling.
+Includes OTP detection, numeric district codes, subdivision support, and error classification.
 """
 from __future__ import annotations
 import asyncio
@@ -14,6 +14,7 @@ import httpx
 import asyncpg
 from bs4 import BeautifulSoup
 
+from lib.tn_codes import get_district_code
 from services.r2_storage import upload_fmb_to_r2
 
 logger = logging.getLogger(__name__)
@@ -33,13 +34,11 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9,ta;q=0.8",
 }
 
-# Candidate endpoint paths for A-Register / Patta view
 AREG_PATHS = [
     ("/eservicesnew/land/aregister.html", "/eservicesnew/land/aregister_verify.html"),
     ("/tnportal/portal/Ctzn_Aregister_frm", "/tnportal/portal/Ctzn_Aregister_submit"),
 ]
 
-# Candidate endpoint paths for FMB View
 FMB_PATHS = [
     ("/eservicesnew/land/fmb.html", "/eservicesnew/land/fmb_verify.html"),
     ("/tnportal/portal/Ctzn_FMBView_frm", "/tnportal/portal/Ctzn_FMBView_submit"),
@@ -51,13 +50,16 @@ async def fetch_land_parcel(
     taluk: str,
     village: str,
     survey_number: str,
+    subdivision_number: Optional[str] = None,
     patta_number: Optional[str] = None,
     pool: Optional[asyncpg.Pool] = None,
 ) -> Optional[dict]:
     """
     Scrape land parcel data from TN eServices.
-    Tries new & legacy endpoints with retries and session consistency.
+    Includes OTP detection, numeric district codes, and error classification.
     """
+    district_code = get_district_code(district)
+
     async with httpx.AsyncClient(
         base_url=BASE_URL,
         headers=HEADERS,
@@ -76,11 +78,11 @@ async def fetch_land_parcel(
                     soup = BeautifulSoup(resp.text, "html.parser")
                     form_data = _extract_hidden_fields(soup)
 
-                    # Populate form fields covering all portal variants
+                    # Populate form payload with district code and display name variants
                     form_data.update({
                         "district": district,
-                        "district_code": district,
-                        "ddl_district": district,
+                        "district_code": district_code,
+                        "ddl_district": district_code,
                         "taluk": taluk,
                         "taluk_code": taluk,
                         "ddl_taluk": taluk,
@@ -92,6 +94,15 @@ async def fetch_land_parcel(
                         "txtSurveyNo": survey_number,
                         "opt_type": "1" if survey_number else "2",
                     })
+
+                    if subdivision_number:
+                        form_data.update({
+                            "subdivno": subdivision_number,
+                            "txtSubdivNo": subdivision_number,
+                            "sub_division": subdivision_number,
+                            "txtSubDivision": subdivision_number,
+                        })
+
                     if patta_number:
                         form_data["pattano"] = patta_number
                         form_data["txtPattaNo"] = patta_number
@@ -101,6 +112,21 @@ async def fetch_land_parcel(
 
                     if post_resp.status_code == 200:
                         result_soup = BeautifulSoup(post_resp.text, "html.parser")
+                        text_lower = result_soup.get_text(strip=True).lower()
+
+                        # Check for OTP requirement
+                        if any(k in text_lower for k in ("otp", "ஒருமுறை", "mobile number", "கடவுச்சொல்")):
+                            logger.warning(
+                                "OTP verification required on %s for %s/%s/%s. Skipping automated fetch.",
+                                submit_path, district, taluk, village
+                            )
+                            return None
+
+                        # Check for explicit "No records found" message
+                        if any(k in text_lower for k in ("no records found", "பதிவுகள் இல்லை", "no data found")):
+                            logger.info("No records found on portal for survey %s in %s", survey_number, district)
+                            return None
+
                         parsed = _parse_a_register(result_soup, district, taluk, village, survey_number)
                         if parsed:
                             if pool:
@@ -125,12 +151,15 @@ async def fetch_and_upload_fmb(
     taluk: str,
     village: str,
     survey_number: str,
+    subdivision_number: Optional[str] = None,
     patta_number: Optional[str] = None,
     pool: Optional[asyncpg.Pool] = None,
 ) -> Optional[str]:
     """
     Fetch FMB sketch bytes from TN eServices and upload to Cloudflare R2.
     """
+    district_code = get_district_code(district)
+
     async with httpx.AsyncClient(
         base_url=BASE_URL,
         headers=HEADERS,
@@ -147,11 +176,15 @@ async def fetch_and_upload_fmb(
                 form_data = _extract_hidden_fields(soup)
                 form_data.update({
                     "district": district,
+                    "district_code": district_code,
+                    "ddl_district": district_code,
                     "taluk": taluk,
                     "village": village,
                     "surveyno": survey_number,
                     "txtSurveyNo": survey_number,
                 })
+                if subdivision_number:
+                    form_data["subdivno"] = subdivision_number
 
                 fmb_resp = await client.post(submit_path, data=form_data)
                 if fmb_resp.status_code == 200:
