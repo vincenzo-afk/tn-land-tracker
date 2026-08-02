@@ -9,15 +9,12 @@ const token = process.env.GITHUB_TOKEN || process.argv[2];
 async function main() {
   try {
     console.log('Initializing git repository at', dir);
-    await git.init({ fs, dir, defaultBranch: 'main' });
+    await git.init({ fs, dir });
 
-    let currentBranch = 'main';
+    let currentBranch = 'master';
     try {
-      currentBranch = (await git.currentBranch({ fs, dir })) || 'main';
-    } catch (e) {
-      currentBranch = 'master';
-    }
-    console.log('Current branch is:', currentBranch);
+      currentBranch = (await git.currentBranch({ fs, dir })) || 'master';
+    } catch (e) {}
 
     console.log('Staging files...');
     await git.add({ fs, dir, filepath: '.' });
@@ -30,9 +27,8 @@ async function main() {
         name: 'Vincenzo AFK',
         email: 'vincenzo@example.com',
       },
-      message: 'Complete TN Land Tracker project (Frontend, Backend, Supabase, Leaflet, Disclaimers)',
+      message: 'Complete TN Land Tracker project (Frontend, Backend, Supabase, Leaflet, Scrapers)',
     });
-
     console.log('Successfully created commit:', sha);
 
     console.log('Setting remote origin...');
@@ -46,17 +42,32 @@ async function main() {
 
     if (token) {
       console.log('Pushing to https://github.com/vincenzo-afk/tn-land-tracker.git...');
-      const pushResult = await git.push({
-        fs,
-        http,
-        dir,
-        remote: 'origin',
-        ref: currentBranch,
-        remoteRef: 'main',
-        force: true,
-        onAuth: () => ({ username: token }),
-      });
-      console.log('Push result successfully finished:', JSON.stringify(pushResult));
+      try {
+        const pushResult = await git.push({
+          fs,
+          http,
+          dir,
+          remote: 'origin',
+          ref: currentBranch,
+          remoteRef: 'main',
+          force: true,
+          onAuth: () => ({ username: token, password: '' }),
+        });
+        console.log('Push result successfully finished:', JSON.stringify(pushResult));
+      } catch (err1) {
+        console.log('Auth attempt 1 failed:', err1.message || err1);
+        const pushResult = await git.push({
+          fs,
+          http,
+          dir,
+          remote: 'origin',
+          ref: currentBranch,
+          remoteRef: 'main',
+          force: true,
+          onAuth: () => ({ username: 'x-access-token', password: token }),
+        });
+        console.log('Push result successfully finished:', JSON.stringify(pushResult));
+      }
     } else {
       console.log('Git repo staged and committed locally!');
     }
