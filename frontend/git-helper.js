@@ -1,8 +1,10 @@
 const git = require('./node_modules/isomorphic-git');
+const http = require('./node_modules/isomorphic-git/http/node');
 const fs = require('fs');
 const path = require('path');
 
 const dir = path.resolve(__dirname, '..');
+const token = process.env.GITHUB_TOKEN || process.argv[2];
 
 async function main() {
   try {
@@ -34,9 +36,23 @@ async function main() {
       force: true,
     });
 
-    console.log('Repository initialized, staged, and committed successfully!');
+    if (token) {
+      console.log('Pushing to https://github.com/vincenzo-afk/tn-land-tracker.git...');
+      const pushResult = await git.push({
+        fs,
+        http,
+        dir,
+        remote: 'origin',
+        ref: 'main',
+        onAuth: () => ({ username: token }),
+      });
+      console.log('Push result:', pushResult);
+    } else {
+      console.log('Git repo staged and committed locally!');
+      console.log('To push to GitHub, run: node git-helper.js <YOUR_GITHUB_TOKEN>');
+    }
   } catch (err) {
-    console.error('Git helper error:', err);
+    console.error('Git helper error:', err.message || err);
   }
 }
 
