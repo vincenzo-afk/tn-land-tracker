@@ -9,7 +9,15 @@ const token = process.env.GITHUB_TOKEN || process.argv[2];
 async function main() {
   try {
     console.log('Initializing git repository at', dir);
-    await git.init({ fs, dir });
+    await git.init({ fs, dir, defaultBranch: 'main' });
+
+    let currentBranch = 'main';
+    try {
+      currentBranch = (await git.currentBranch({ fs, dir })) || 'main';
+    } catch (e) {
+      currentBranch = 'master';
+    }
+    console.log('Current branch is:', currentBranch);
 
     console.log('Staging files...');
     await git.add({ fs, dir, filepath: '.' });
@@ -43,13 +51,14 @@ async function main() {
         http,
         dir,
         remote: 'origin',
-        ref: 'main',
+        ref: currentBranch,
+        remoteRef: 'main',
+        force: true,
         onAuth: () => ({ username: token }),
       });
-      console.log('Push result:', pushResult);
+      console.log('Push result successfully finished:', JSON.stringify(pushResult));
     } else {
       console.log('Git repo staged and committed locally!');
-      console.log('To push to GitHub, run: node git-helper.js <YOUR_GITHUB_TOKEN>');
     }
   } catch (err) {
     console.error('Git helper error:', err.message || err);
