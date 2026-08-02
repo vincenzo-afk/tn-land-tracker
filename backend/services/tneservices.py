@@ -1,12 +1,14 @@
 """
 services/tneservices.py — Async scraper for TN eServices portal.
 Fetches Patta, Chitta, A-Register data and FMB sketch.
+Support for eservicesnew & legacy portal endpoints with retry handling.
 """
 from __future__ import annotations
 import asyncio
 import logging
+import os
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 import asyncpg
@@ -16,8 +18,10 @@ from services.r2_storage import upload_fmb_to_r2
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://eservices.tn.gov.in"
+BASE_URL = os.getenv("TNESERVICES_BASE_URL", "https://eservices.tn.gov.in")
 TIMEOUT = 30.0
+MAX_RETRIES = 2
+RETRY_DELAY = 1.0
 
 HEADERS = {
     "User-Agent": (
@@ -26,8 +30,20 @@ HEADERS = {
         "Chrome/124.0.0.0 Safari/537.36"
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
+    "Accept-Language": "en-US,en;q=0.9,ta;q=0.8",
 }
+
+# Candidate endpoint paths for A-Register / Patta view
+AREG_PATHS = [
+    ("/eservicesnew/land/aregister.html", "/eservicesnew/land/aregister_verify.html"),
+    ("/tnportal/portal/Ctzn_Aregister_frm", "/tnportal/portal/Ctzn_Aregister_submit"),
+]
+
+# Candidate endpoint paths for FMB View
+FMB_PATHS = [
+    ("/eservicesnew/land/fmb.html", "/eservicesnew/land/fmb_verify.html"),
+    ("/tnportal/portal/Ctzn_FMBView_frm", "/tnportal/portal/Ctzn_FMBView_submit"),
+]
 
 
 async def fetch_land_parcel(
@@ -35,54 +51,70 @@ async def fetch_land_parcel(
     taluk: str,
     village: str,
     survey_number: str,
-    patta_number: Optional[str],
+    patta_number: Optional[str] = None,
     pool: Optional[asyncpg.Pool] = None,
 ) -> Optional[dict]:
     """
     Scrape land parcel data from TN eServices.
-    Saves results to Supabase (if pool available) and returns the parsed record dict.
-    Returns None if the portal is unavailable or data not found.
+    Tries new & legacy endpoints with retries and session consistency.
     """
-    try:
-        async with httpx.AsyncClient(
-            base_url=BASE_URL,
-            headers=HEADERS,
-            follow_redirects=True,
-            timeout=TIMEOUT,
-        ) as client:
-            resp = await client.get("/tnportal/portal/Ctzn_Aregister_frm")
-            resp.raise_for_status()
-            soup = BeautifulSoup(resp.text, "html.parser")
+    async with httpx.AsyncClient(
+        base_url=BASE_URL,
+        headers=HEADERS,
+        follow_redirects=True,
+        timeout=TIMEOUT,
+    ) as client:
+        for form_path, submit_path in AREG_PATHS:
+            for attempt in range(1, MAX_RETRIES + 2):
+                try:
+                    logger.info("Attempting fetch from %s (Attempt %d)", form_path, attempt)
+                    resp = await client.get(form_path)
+                    if resp.status_code != 200:
+                        logger.warning("GET %s returned status %d", resp.url, resp.status_code)
+                        break
 
-            form_data = _extract_hidden_fields(soup)
-            form_data.update({
-                "district": district,
-                "taluk": taluk,
-                "village": village,
-                "surveyno": survey_number,
-            })
-            if patta_number:
-                form_data["pattano"] = patta_number
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    form_data = _extract_hidden_fields(soup)
 
-            post_resp = await client.post(
-                "/tnportal/portal/Ctzn_Aregister_submit",
-                data=form_data,
-            )
-            post_resp.raise_for_status()
-            result_soup = BeautifulSoup(post_resp.text, "html.parser")
-            parsed = _parse_a_register(result_soup, district, taluk, village, survey_number)
+                    # Populate form fields covering all portal variants
+                    form_data.update({
+                        "district": district,
+                        "district_code": district,
+                        "ddl_district": district,
+                        "taluk": taluk,
+                        "taluk_code": taluk,
+                        "ddl_taluk": taluk,
+                        "village": village,
+                        "village_code": village,
+                        "ddl_village": village,
+                        "surveyno": survey_number,
+                        "surveynumber": survey_number,
+                        "txtSurveyNo": survey_number,
+                        "opt_type": "1" if survey_number else "2",
+                    })
+                    if patta_number:
+                        form_data["pattano"] = patta_number
+                        form_data["txtPattaNo"] = patta_number
 
-            if parsed:
-                if pool:
-                    land_id = await _save_land_parcel(parsed, pool)
-                else:
-                    import uuid
-                    land_id = uuid.uuid4()
-                parsed["id"] = land_id
-                return parsed
+                    post_resp = await client.post(submit_path, data=form_data)
+                    logger.info("POST %s returned status %d", post_resp.url, post_resp.status_code)
 
-    except (httpx.HTTPError, asyncio.TimeoutError) as exc:
-        logger.warning("TN eServices fetch failed for survey %s: %s", survey_number, exc)
+                    if post_resp.status_code == 200:
+                        result_soup = BeautifulSoup(post_resp.text, "html.parser")
+                        parsed = _parse_a_register(result_soup, district, taluk, village, survey_number)
+                        if parsed:
+                            if pool:
+                                land_id = await _save_land_parcel(parsed, pool)
+                            else:
+                                land_id = uuid4()
+                            parsed["id"] = land_id
+                            logger.info("Successfully parsed A-Register data for survey %s", survey_number)
+                            return parsed
+
+                except (httpx.HTTPError, asyncio.TimeoutError) as exc:
+                    logger.warning("Network error on %s attempt %d: %s", form_path, attempt, exc)
+                    if attempt <= MAX_RETRIES:
+                        await asyncio.sleep(RETRY_DELAY)
 
     return None
 
@@ -93,65 +125,57 @@ async def fetch_and_upload_fmb(
     taluk: str,
     village: str,
     survey_number: str,
-    patta_number: Optional[str],
-    pool: asyncpg.Pool,
+    patta_number: Optional[str] = None,
+    pool: Optional[asyncpg.Pool] = None,
 ) -> Optional[str]:
     """
     Fetch FMB sketch bytes from TN eServices and upload to Cloudflare R2.
-    Saves the R2 URL back to land_parcels.fmb_sketch_url.
-    Returns the public CDN URL, or None on failure.
     """
-    try:
-        async with httpx.AsyncClient(
-            base_url=BASE_URL,
-            headers=HEADERS,
-            follow_redirects=True,
-            timeout=TIMEOUT,
-        ) as client:
-            # Fetch FMB form page
-            resp = await client.get("/tnportal/portal/Ctzn_FMBView_frm")
-            resp.raise_for_status()
-            soup = BeautifulSoup(resp.text, "html.parser")
-            form_data = _extract_hidden_fields(soup)
-            form_data.update({
-                "district": district,
-                "taluk": taluk,
-                "village": village,
-                "surveyno": survey_number,
-            })
+    async with httpx.AsyncClient(
+        base_url=BASE_URL,
+        headers=HEADERS,
+        follow_redirects=True,
+        timeout=TIMEOUT,
+    ) as client:
+        for form_path, submit_path in FMB_PATHS:
+            try:
+                resp = await client.get(form_path)
+                if resp.status_code != 200:
+                    continue
 
-            fmb_resp = await client.post(
-                "/tnportal/portal/Ctzn_FMBView_submit",
-                data=form_data,
-            )
-            fmb_resp.raise_for_status()
+                soup = BeautifulSoup(resp.text, "html.parser")
+                form_data = _extract_hidden_fields(soup)
+                form_data.update({
+                    "district": district,
+                    "taluk": taluk,
+                    "village": village,
+                    "surveyno": survey_number,
+                    "txtSurveyNo": survey_number,
+                })
 
-            content_type = fmb_resp.headers.get("content-type", "")
-            if "pdf" in content_type or "image" in content_type:
-                # Upload to R2
-                ext = "pdf" if "pdf" in content_type else "png"
-                file_key = f"fmb/{land_id}.{ext}"
-                cdn_url = await upload_fmb_to_r2(
-                    key=file_key,
-                    data=fmb_resp.content,
-                    content_type=content_type,
-                )
-                if cdn_url:
-                    await pool.execute(
-                        "UPDATE land_parcels SET fmb_sketch_url = $1 WHERE id = $2",
-                        cdn_url, land_id,
-                    )
-                    return cdn_url
+                fmb_resp = await client.post(submit_path, data=form_data)
+                if fmb_resp.status_code == 200:
+                    content_type = fmb_resp.headers.get("content-type", "")
+                    if "pdf" in content_type or "image" in content_type:
+                        ext = "pdf" if "pdf" in content_type else "png"
+                        file_key = f"fmb/{land_id}.{ext}"
+                        cdn_url = await upload_fmb_to_r2(
+                            key=file_key,
+                            data=fmb_resp.content,
+                            content_type=content_type,
+                        )
+                        if cdn_url and pool:
+                            await pool.execute(
+                                "UPDATE land_parcels SET fmb_sketch_url = $1 WHERE id = $2",
+                                cdn_url, land_id,
+                            )
+                        return cdn_url
 
-    except (httpx.HTTPError, asyncio.TimeoutError) as exc:
-        logger.warning("FMB fetch failed for land %s: %s", land_id, exc)
+            except (httpx.HTTPError, asyncio.TimeoutError) as exc:
+                logger.warning("FMB fetch error on %s: %s", form_path, exc)
 
     return None
 
-
-# ─────────────────────────────────────────────────────────────
-# Private helpers
-# ─────────────────────────────────────────────────────────────
 
 def _extract_hidden_fields(soup: BeautifulSoup) -> dict:
     """Extract all hidden input fields from a form (CSRF tokens etc.)."""
@@ -169,10 +193,12 @@ def _parse_a_register(
     village: str,
     survey_number: str,
 ) -> Optional[dict]:
-    """Parse the A-Register HTML response into a structured dict."""
+    """Parse A-Register / Patta / Chitta HTML tables (English & Tamil)."""
     try:
         tables = soup.find_all("table")
         if not tables:
+            title = soup.title.get_text(strip=True) if soup.title else "No Title"
+            logger.info("No tables found on response page. Page title: %s", title)
             return None
 
         data: dict = {
@@ -189,30 +215,30 @@ def _parse_a_register(
                 if len(cells) >= 2:
                     key = cells[0].lower()
                     val = cells[1]
-                    if "patta" in key:
+                    if any(k in key for k in ("patta", "பாட்டா")):
                         data["patta_number"] = val
-                    elif "owner" in key or "name" in key:
+                    elif any(k in key for k in ("owner", "name", "உரிமையாளர்", "பெயர்")):
                         data["owner_name"] = val
-                    elif "area" in key and "hectare" in key:
+                    elif any(k in key for k in ("hectare", "ஹெக்டேர்")):
                         try:
                             data["area_hectares"] = float(val.replace(",", ""))
                         except ValueError:
                             pass
-                    elif "area" in key and "acre" in key:
+                    elif any(k in key for k in ("acre", "ஏக்கர்")):
                         try:
                             data["area_acres"] = float(val.replace(",", ""))
                         except ValueError:
                             pass
-                    elif "land type" in key or "nilam" in key:
+                    elif any(k in key for k in ("land type", "nilam", "நிலம்", "நஞ்சை", "புஞ்சை")):
                         data["land_type"] = val
-                    elif "land nature" in key:
+                    elif "nature" in key:
                         data["land_nature"] = val
-                    elif "soil" in key:
+                    elif any(k in key for k in ("soil", "மண்")):
                         data["soil_type"] = val
-                    elif "water" in key:
+                    elif any(k in key for k in ("water", "நீர்")):
                         data["water_source"] = val
 
-        return data if "survey_number" in data else None
+        return data if len(data) > 4 else None
 
     except Exception as exc:  # noqa: BLE001
         logger.warning("A-Register parse error: %s", exc)
@@ -220,7 +246,7 @@ def _parse_a_register(
 
 
 async def _save_land_parcel(data: dict, pool: asyncpg.Pool) -> UUID:
-    """Insert a new land parcel record (and owner if present) into Supabase."""
+    """Insert a new land parcel record into Supabase."""
     land_id = await pool.fetchval(
         """
         INSERT INTO land_parcels (
@@ -261,4 +287,4 @@ async def _save_land_parcel(data: dict, pool: asyncpg.Pool) -> UUID:
             land_id, owner_id, data.get("patta_number"),
         )
 
-    return land_id
+    return land_id or uuid4()
