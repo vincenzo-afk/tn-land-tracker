@@ -57,10 +57,13 @@ export default function LandCard({ land }: LandCardProps) {
         )}
       </div>
 
-      {/* District tag */}
+      {/* District tag & Official Logo Badge */}
       <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
-        <span className="text-xs text-slate-600">{land.district} District</span>
-        <span className="text-xs text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity">View details →</span>
+        <div className="flex items-center gap-2">
+          <img src="/logo.png" alt="TN Logo" className="w-4 h-4 object-contain rounded" />
+          <span className="text-xs text-slate-500 font-medium">{land.district} District</span>
+        </div>
+        <span className="text-xs text-emerald-400 font-medium opacity-80 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all">View details →</span>
       </div>
     </Link>
   );

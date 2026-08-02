@@ -58,10 +58,12 @@ export default function AboutPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       {/* Header */}
-      <div className="mb-10">
-        <span className="inline-flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 mb-4">
-          <ShieldAlert className="w-3.5 h-3.5" /> Read-only · No Login · Tamil Nadu Only
-        </span>
+      <div className="mb-10 text-center">
+        <img
+          src="/logo.png"
+          alt="TN Land Tracker Official Logo"
+          className="w-20 h-20 object-contain mx-auto mb-4 rounded-2xl shadow-xl shadow-emerald-500/20 ring-1 ring-emerald-500/30 p-1 bg-slate-900/60"
+        />
         <h1 className="text-3xl font-bold text-white mb-3">About TN Land Tracker</h1>
         <p className="text-slate-400 leading-relaxed">
           TN Land Tracker is a free, read-only web application that lets anyone search and view land ownership details across Tamil Nadu — with no login required.
