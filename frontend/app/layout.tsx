@@ -11,10 +11,15 @@ export const metadata: Metadata = {
   description:
     "Search and view land ownership details, patta records, EC history, FMB sketches and guideline values across Tamil Nadu. Free, no login required.",
   keywords: ["Tamil Nadu land records", "patta search", "EC certificate", "FMB sketch", "TNREGINET", "TN eServices"],
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
   openGraph: {
     title: "TN Land Tracker",
     description: "Free, read-only Tamil Nadu land parcel information",
     type: "website",
+    images: ["/logo.png"],
   },
   robots: "index, follow",
 };
@@ -32,13 +37,15 @@ export default function RootLayout({
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
               {/* Logo */}
-              <Link href="/" className="flex items-center gap-2 group">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:shadow-emerald-500/40 transition-shadow">
-                  <MapPin className="w-4 h-4 text-white" />
-                </div>
+              <Link href="/" className="flex items-center gap-3 group">
+                <img
+                  src="/logo.png"
+                  alt="TN Land Tracker Logo"
+                  className="w-10 h-10 object-contain rounded-xl shadow-lg shadow-emerald-500/20 group-hover:scale-105 transition-transform"
+                />
                 <div>
-                  <span className="font-bold text-white tracking-tight">TN Land</span>
-                  <span className="font-bold text-emerald-400 tracking-tight"> Tracker</span>
+                  <span className="font-bold text-white text-lg tracking-tight">TN Land</span>
+                  <span className="font-bold text-emerald-400 text-lg tracking-tight"> Tracker</span>
                 </div>
               </Link>
 
@@ -67,9 +74,11 @@ export default function RootLayout({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="w-6 h-6 rounded bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-                    <MapPin className="w-3 h-3 text-white" />
-                  </div>
+                  <img
+                    src="/logo.png"
+                    alt="TN Land Tracker Logo"
+                    className="w-7 h-7 object-contain rounded"
+                  />
                   <span className="font-semibold text-white">TN Land Tracker</span>
                 </div>
                 <p className="text-xs text-slate-500 leading-relaxed">

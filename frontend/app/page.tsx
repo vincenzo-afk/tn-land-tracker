@@ -57,6 +57,15 @@ export default function HomePage() {
         </div>
 
         <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 text-center">
+          {/* Logo Brand Badge */}
+          <div className="flex justify-center mb-6">
+            <img
+              src="/logo.png"
+              alt="TN Land Tracker Official Logo"
+              className="w-20 h-20 sm:w-24 sm:h-24 object-contain rounded-2xl shadow-2xl shadow-emerald-500/20 ring-1 ring-emerald-500/30 p-1 bg-slate-900/60 backdrop-blur-md hover:scale-105 transition-transform"
+            />
+          </div>
+
           {/* Badge */}
           <div className="inline-flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />

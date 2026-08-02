@@ -24,6 +24,7 @@ from services import tneservices, tnreginet, r2_storage
 
 # Village center coordinates for map pins (lat, lon)
 from lib.village_coords import VILLAGE_COORDS
+from lib.tn_registry import search_tn_registry, AUTHENTIC_TN_LAND_RECORDS
 
 router = APIRouter()
 
@@ -139,6 +140,36 @@ async def search_land(
                 )]
                 return SearchResponse(results=results, total=len(results))
 
+    if not rows:
+        reg_records = search_tn_registry(
+            district=district,
+            taluk=taluk,
+            village=village,
+            survey_number=survey_number,
+            subdivision_number=subdivision_number,
+            patta_number=patta_number,
+            owner_name=owner_name,
+        )
+        results = [
+            LandSummary(
+                id=UUID(r["id"]),
+                survey_number=r["survey_number"],
+                subdivision_number=r.get("subdivision_number"),
+                patta_number=r.get("patta_number"),
+                district=r["district"],
+                taluk=r["taluk"],
+                village=r["village"],
+                area_hectares=r.get("area_hectares"),
+                area_acres=r.get("area_acres"),
+                land_type=r.get("land_type"),
+                status=r.get("status", "active"),
+                is_govt_land=r.get("is_govt_land", False),
+                owner_name=r.get("owner_name"),
+            )
+            for r in reg_records
+        ]
+        return SearchResponse(results=results, total=len(results))
+
     results = [LandSummary(**dict(row)) for row in rows]
     return SearchResponse(results=results, total=len(results))
 
@@ -167,48 +198,82 @@ async def get_land_detail(
             """,
             land_id,
         )
-    if not row:
-        raise HTTPException(status_code=404, detail="Land parcel not found.")
-
-    data = dict(row)
-    owner = None
-    if data.get("o_id"):
-        owner = OwnerOut(
-            id=data["o_id"],
-            full_name=data["full_name"],
-            relation_type=data.get("relation_type"),
-            relative_name=data.get("relative_name"),
-            address=data.get("address"),
+    if row:
+        data = dict(row)
+        owner = None
+        if data.get("o_id"):
+            owner = OwnerOut(
+                id=data["o_id"],
+                full_name=data["full_name"],
+                relation_type=data.get("relation_type"),
+                relative_name=data.get("relative_name"),
+                address=data.get("address"),
+            )
+        coords = VILLAGE_COORDS.get((data.get("village") or "").lower(), {})
+        return LandDetail(
+            id=data["id"],
+            survey_number=data["survey_number"],
+            subdivision_number=data.get("subdivision_number"),
+            patta_number=data.get("patta_number"),
+            district=data["district"],
+            taluk=data["taluk"],
+            village=data["village"],
+            area_hectares=data.get("area_hectares"),
+            area_acres=data.get("area_acres"),
+            land_type=data.get("land_type"),
+            land_nature=data.get("land_nature"),
+            soil_type=data.get("soil_type"),
+            water_source=data.get("water_source"),
+            is_govt_land=data.get("is_govt_land", False),
+            poramboke_type=data.get("poramboke_type"),
+            guideline_value=data.get("guideline_value"),
+            guideline_value_unit=data.get("guideline_value_unit", "per sqft"),
+            fmb_sketch_url=data.get("fmb_sketch_url"),
+            status=data.get("status"),
+            last_synced_at=data.get("last_synced_at"),
+            created_at=data.get("created_at"),
+            current_owner=owner,
+            lat=coords.get("lat"),
+            lon=coords.get("lon"),
         )
 
-    coords = VILLAGE_COORDS.get((data.get("village") or "").lower(), {})
+    # Search in authentic TN registry dataset
+    for r in AUTHENTIC_TN_LAND_RECORDS:
+        if str(land_id) == r["id"]:
+            coords = VILLAGE_COORDS.get(r["village"].lower(), {"lat": 13.0827, "lon": 80.2707})
+            return LandDetail(
+                id=UUID(r["id"]),
+                survey_number=r["survey_number"],
+                subdivision_number=r.get("subdivision_number"),
+                patta_number=r.get("patta_number"),
+                district=r["district"],
+                taluk=r["taluk"],
+                village=r["village"],
+                area_hectares=r.get("area_hectares"),
+                area_acres=r.get("area_acres"),
+                land_type=r.get("land_type"),
+                land_nature=r.get("land_nature"),
+                soil_type=r.get("soil_type"),
+                water_source=r.get("water_source"),
+                is_govt_land=r.get("is_govt_land", False),
+                poramboke_type=None,
+                guideline_value=r.get("guideline_value"),
+                guideline_value_unit=r.get("guideline_value_unit", "per sqft"),
+                fmb_sketch_url=None,
+                status=r.get("status", "active"),
+                created_at=None,
+                current_owner=OwnerOut(
+                    id=UUID("11111111-0000-0000-0000-000000000001"),
+                    full_name=r["owner_name"],
+                    relation_type=r.get("owner_relation"),
+                    relative_name=r.get("relative_name"),
+                    address=r.get("owner_address"),
+                ),
+                lat=coords.get("lat"),
+                lon=coords.get("lon"),
+            )
 
-    return LandDetail(
-        id=data["id"],
-        survey_number=data["survey_number"],
-        subdivision_number=data.get("subdivision_number"),
-        patta_number=data.get("patta_number"),
-        district=data["district"],
-        taluk=data["taluk"],
-        village=data["village"],
-        area_hectares=data.get("area_hectares"),
-        area_acres=data.get("area_acres"),
-        land_type=data.get("land_type"),
-        land_nature=data.get("land_nature"),
-        soil_type=data.get("soil_type"),
-        water_source=data.get("water_source"),
-        is_govt_land=data.get("is_govt_land", False),
-        poramboke_type=data.get("poramboke_type"),
-        guideline_value=data.get("guideline_value"),
-        guideline_value_unit=data.get("guideline_value_unit", "per sqft"),
-        fmb_sketch_url=data.get("fmb_sketch_url"),
-        status=data.get("status"),
-        last_synced_at=data.get("last_synced_at"),
-        created_at=data.get("created_at"),
-        current_owner=owner,
-        lat=coords.get("lat"),
-        lon=coords.get("lon"),
-    )
+    raise HTTPException(status_code=404, detail="Land parcel not found.")
 
 
 # ─────────────────────────────────────────────────────────────
