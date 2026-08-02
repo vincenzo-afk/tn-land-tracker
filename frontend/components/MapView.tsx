@@ -44,9 +44,15 @@ export default function MapView({
         shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
       });
 
-      if (!mapRef.current) return;
+      const container = mapRef.current;
+      if (!container) return;
 
-      const map = L.map(mapRef.current).setView([centerLat, centerLon], effectiveZoom);
+      // Reset leaflet_id to prevent "Map container is already initialized" error
+      if ((container as any)._leaflet_id) {
+        (container as any)._leaflet_id = null;
+      }
+
+      const map = L.map(container).setView([centerLat, centerLon], effectiveZoom);
       mapInstanceRef.current = map;
 
       // OSM base layer
@@ -55,8 +61,14 @@ export default function MapView({
         maxZoom: 19,
       });
 
-      // Bhuvan satellite (WMS)
-      const bhuvanSatellite = L.tileLayer.wms('https://bhuvan-vec2.nrsc.gov.in/bhuvan/wms', {
+      // High resolution Satellite layer (Esri World Imagery)
+      const satelliteMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles © Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+        maxZoom: 19,
+      });
+
+      // Bhuvan ISRO satellite layer (WMS)
+      const bhuvanSatellite = L.tileLayer.wms('https://bhuvan-vec1.nrsc.gov.in/bhuvan/gwc/service/wms', {
         layers: 'india_hd',
         format: 'image/jpeg',
         transparent: false,
@@ -76,7 +88,7 @@ export default function MapView({
 
       // Layer toggle control
       L.control.layers(
-        { 'OpenStreetMap': osm, 'Bhuvan Satellite': bhuvanSatellite },
+        { 'OpenStreetMap': osm, 'Satellite View': satelliteMap, 'Bhuvan Satellite (ISRO)': bhuvanSatellite },
         { 'Land Use Layer (LULC)': bhuvanLULC }
       ).addTo(map);
 
@@ -98,6 +110,10 @@ export default function MapView({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (mapInstanceRef.current as any).remove();
         mapInstanceRef.current = null;
+      }
+      if (mapRef.current) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (mapRef.current as any)._leaflet_id = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -26,7 +26,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="scroll-smooth" data-scroll-behavior="smooth">
-      <body className={`${inter.className} min-h-screen bg-slate-950 text-slate-100 flex flex-col`}>
+      <body className={`${inter.className} min-h-screen bg-slate-950 text-slate-100 flex flex-col`} suppressHydrationWarning>
         {/* Navigation */}
         <nav className="sticky top-0 z-50 border-b border-slate-800/60 bg-slate-950/80 backdrop-blur-xl">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

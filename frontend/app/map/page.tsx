@@ -53,13 +53,24 @@ export default function MapExplorerPage() {
         shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
       });
 
-      const map = L.map(mapRef.current!).setView([11.1271, 78.6569], 7);
+      const container = mapRef.current;
+      if (!container) return;
+
+      if ((container as any)._leaflet_id) {
+        (container as any)._leaflet_id = null;
+      }
+
+      const map = L.map(container).setView([11.1271, 78.6569], 7);
       mapInstanceRef.current = map;
 
       const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
       });
-      const bhuvanSat = L.tileLayer.wms('https://bhuvan-vec2.nrsc.gov.in/bhuvan/wms', {
+      const satelliteMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles © Esri',
+        maxZoom: 19,
+      });
+      const bhuvanSat = L.tileLayer.wms('https://bhuvan-vec1.nrsc.gov.in/bhuvan/gwc/service/wms', {
         layers: 'india_hd', format: 'image/jpeg', transparent: false, attribution: '© ISRO Bhuvan',
       });
       const bhuvanLULC = L.tileLayer.wms('https://bhuvan-vec2.nrsc.gov.in/bhuvan/wms', {
@@ -68,7 +79,7 @@ export default function MapExplorerPage() {
 
       osm.addTo(map);
       L.control.layers(
-        { 'OpenStreetMap': osm, 'Bhuvan Satellite': bhuvanSat },
+        { 'OpenStreetMap': osm, 'Satellite View': satelliteMap, 'Bhuvan Satellite (ISRO)': bhuvanSat },
         { 'Land Use (LULC)': bhuvanLULC }
       ).addTo(map);
     });
@@ -78,6 +89,10 @@ export default function MapExplorerPage() {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (mapInstanceRef.current as any).remove();
         mapInstanceRef.current = null;
+      }
+      if (mapRef.current) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (mapRef.current as any)._leaflet_id = null;
       }
     };
   }, []);
