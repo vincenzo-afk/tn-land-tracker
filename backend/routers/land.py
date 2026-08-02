@@ -163,38 +163,7 @@ async def get_land_detail(
             land_id,
         )
     if not row:
-        coords = VILLAGE_COORDS.get("vepery", {"lat": 13.0827, "lon": 80.2707})
-        return LandDetail(
-            id=land_id,
-            survey_number="123",
-            subdivision_number="1",
-            patta_number="P-1042",
-            district="Chennai",
-            taluk="Egmore",
-            village="Vepery",
-            area_hectares=0.05,
-            area_acres=0.12,
-            land_type="Punjai",
-            land_nature="Dry Land",
-            soil_type="Sandy Loam",
-            water_source=None,
-            is_govt_land=False,
-            poramboke_type=None,
-            guideline_value=85000,
-            guideline_value_unit="per sqft",
-            fmb_sketch_url=None,
-            status="active",
-            created_at=None,
-            current_owner=OwnerOut(
-                id=UUID("11111111-0000-0000-0000-000000000001"),
-                full_name="Rajan Murugesan",
-                relation_type="Son of",
-                relative_name="Murugesan Pillai",
-                address="No 5, Anna Nagar, Chennai - 600040",
-            ),
-            lat=coords.get("lat"),
-            lon=coords.get("lon"),
-        )
+        raise HTTPException(status_code=404, detail="Land parcel not found.")
 
     data = dict(row)
     owner = None
@@ -336,7 +305,7 @@ async def get_guideline_value(
 
     return GuidelineValueResponse(
         land_id=land_id,
-        guideline_value=gv or 85000,
+        guideline_value=gv,
         guideline_value_unit="per sqft",
     )
 
@@ -394,23 +363,6 @@ async def get_map_geojson(
                     district=row["district"],
                     area_hectares=row.get("area_hectares"),
                     land_type=row.get("land_type"),
-                    lat=coords.get("lat"),
-                    lon=coords.get("lon"),
-                )
-            )
-
-    if not pins:
-        from uuid import uuid5, NAMESPACE_DNS
-        for v_name, coords in VILLAGE_COORDS.items():
-            if district and district.lower() not in v_name.lower():
-                continue
-            pin_id = uuid5(NAMESPACE_DNS, v_name)
-            pins.append(
-                MapPin(
-                    id=pin_id,
-                    survey_number="1",
-                    village=v_name.title(),
-                    district=district or "Tamil Nadu",
                     lat=coords.get("lat"),
                     lon=coords.get("lon"),
                 )

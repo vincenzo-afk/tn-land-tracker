@@ -36,11 +36,11 @@ async def fetch_land_parcel(
     village: str,
     survey_number: str,
     patta_number: Optional[str],
-    pool: asyncpg.Pool,
+    pool: Optional[asyncpg.Pool] = None,
 ) -> Optional[dict]:
     """
     Scrape land parcel data from TN eServices.
-    Saves results to Supabase and returns the parsed record dict.
+    Saves results to Supabase (if pool available) and returns the parsed record dict.
     Returns None if the portal is unavailable or data not found.
     """
     try:
@@ -50,12 +50,10 @@ async def fetch_land_parcel(
             follow_redirects=True,
             timeout=TIMEOUT,
         ) as client:
-            # Step 1: fetch the A-Register extract form page
             resp = await client.get("/tnportal/portal/Ctzn_Aregister_frm")
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "html.parser")
 
-            # Extract CSRF / hidden tokens if present
             form_data = _extract_hidden_fields(soup)
             form_data.update({
                 "district": district,
@@ -66,7 +64,6 @@ async def fetch_land_parcel(
             if patta_number:
                 form_data["pattano"] = patta_number
 
-            # Step 2: POST form
             post_resp = await client.post(
                 "/tnportal/portal/Ctzn_Aregister_submit",
                 data=form_data,
@@ -76,7 +73,11 @@ async def fetch_land_parcel(
             parsed = _parse_a_register(result_soup, district, taluk, village, survey_number)
 
             if parsed:
-                land_id = await _save_land_parcel(parsed, pool)
+                if pool:
+                    land_id = await _save_land_parcel(parsed, pool)
+                else:
+                    import uuid
+                    land_id = uuid.uuid4()
                 parsed["id"] = land_id
                 return parsed
 
