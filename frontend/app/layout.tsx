@@ -4,7 +4,7 @@ import "./globals.css";
 import Link from "next/link";
 import { MapPin, FileText, Map, Info } from "lucide-react";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
   title: "TN Land Tracker — Tamil Nadu Land Parcel Search",
@@ -25,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="scroll-smooth">
+    <html lang="en" className="scroll-smooth" data-scroll-behavior="smooth">
       <body className={`${inter.className} min-h-screen bg-slate-950 text-slate-100 flex flex-col`}>
         {/* Navigation */}
         <nav className="sticky top-0 z-50 border-b border-slate-800/60 bg-slate-950/80 backdrop-blur-xl">
